@@ -17,6 +17,9 @@ Servo Servo1;
 #define MR_Ctrl 12  
 #define MR_PWM 3   
 #define SERVO_Pin 9 
+#define echoPin 8 // Echo Pin
+#define trigPin 7 // Trigger Pin
+
 
 uint8_t transmit_destination=0;
 uint8_t left_pwn=0;
@@ -25,14 +28,21 @@ uint8_t right_pwn=0;
 uint8_t right_direction=0;
 uint8_t display_direction=0;
 uint8_t read_count = 0;
-uint8_t servo_angle = 0;
+uint8_t servo_angle = 90;
+uint8_t start_marker = 0;
+uint8_t control_sum = 0;
 
+int maximumRange = 350; // максимальна відствнь
+int minimumRange = 0; // Minimum range needed
 float duration, distance;
+
+
+int debug_time = millis();
 
 
 void setup(){
   Serial.begin(9600);
-  Servo.attach(SERVO_Pin)
+  Servo1.attach(SERVO_Pin);
   
   pinMode(SCL_Pin,OUTPUT);
   pinMode(SDA_Pin,OUTPUT);
@@ -40,6 +50,10 @@ void setup(){
   pinMode(ML_PWM, OUTPUT);
   pinMode(MR_Ctrl, OUTPUT);
   pinMode(MR_PWM, OUTPUT);
+
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
 
   matrix_display(clear);    
   matrix_display(start01); 
@@ -50,48 +64,74 @@ void setup(){
   digitalWrite(MR_Ctrl,LOW);
 
   Servo1.write(servo_angle);
-
-  while (Serial.available() > 0){
-    char t = Serial.read();
-  }
 }
 
 void loop(){
-  if (left_direction > 1 || right_direction > 1 ){
-    left_direction = 0;
-    right_direction = 0;
-    read_count = 0;
+
+
+
+
+  int cur_time = millis();
+  if (cur_time - debug_time > 1000){
+    debug_time = cur_time;
+    digitalWrite(trigPin, LOW); 
+    delayMicroseconds(2);  //період тиші
+
+    digitalWrite(trigPin, HIGH);
+    delayMicroseconds(10);  //випромінюємо ультразвук
+    
+    digitalWrite(trigPin, LOW);
+    duration = pulseIn(echoPin, HIGH); //вимірюємо час до отримання відбитої хвилі
+    
+    distance = duration/58.2; //розраховуємо відстань
+    
+    if (distance <= maximumRange && distance >= minimumRange){
+      Serial.println("Distance: " + String(distance));
+    }
+    //Serial.println(String(left_pwn) + " "+ String(left_direction) + " "+ String(right_pwn) + " "+ String(right_direction) + " "+ String(display_direction) + " "+ String(servo_angle) + " "+ String(control_sum));
   }
   if (Serial.available())
   {
     switch(read_count){
-
       case 0:
-        left_pwn = Serial.read();
+        start_marker = Serial.read();
         break;
       case 1:
-        left_direction = Serial.read();
+        left_pwn = Serial.read();
         break;
       case 2:
-        right_pwn = Serial.read();
+        left_direction = Serial.read();
         break;
       case 3:
-        right_direction = Serial.read();
+        right_pwn = Serial.read();
         break;
       case 4:
-        display_direction = Serial.read();
+        right_direction = Serial.read();
         break;
       case 5:
+        display_direction = Serial.read();
+        break;
+      case 6:
         servo_angle = Serial.read();
         break;
+      case 7:
+        control_sum = Serial.read();
+        break;
     }
-    read_count++;
+    if (start_marker == 255){
+      read_count++;
+    }
   } 
-  if (read_count < 6){
+  if (read_count < 8){
     return;
   }
-
   read_count = 0;
+
+  int temp = (left_pwn + left_direction + right_pwn + right_direction + display_direction + servo_angle) % 256;
+
+  if(temp != control_sum){
+    return;
+  }
 
   switch (display_direction) 
   {

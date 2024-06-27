@@ -4,66 +4,59 @@ import threading
 import time
 import os
 
-current_angle = 0
+current_angle = 90
 angle_step = 15
 
 ser = serial.Serial("COM9")
 
 
 keyboard = Controller()
-btns = [
-    KeyCode.from_char("w"),
-    KeyCode.from_char("a"),
-    KeyCode.from_char("s"),
-    KeyCode.from_char("d"),
-]
 prev_pressed = [0, 0, 0, 0, 0, 0]  # w, a, s, d, <-, ->
 keys_pressed = [0, 0, 0, 0, 0, 0]  # w, a, s, d, <-, ->
 
 
 def send_control_data(left_pwn, left_direction, right_pwn, right_direction, display_direction):
     global current_angle
-    ser.write(bytearray([left_pwn,left_direction,right_pwn,right_direction,display_direction,current_angle]))
+    control_sum = (left_pwn + left_direction + right_pwn + right_direction + display_direction + current_angle) % 256
+    print(control_sum)
+    ser.write(bytearray([255,left_pwn,left_direction,right_pwn,right_direction,display_direction,current_angle,control_sum]))
 
-
-def turn(side: int):
-    global current_angle
-    current_angle += angle_step * side
-    ser.write(bytearray[1,current_angle])
 
 
 def change_direction():
     global current_angle
+    
+    print(keys_pressed, current_angle)
     if keys_pressed[4]==1:
-        current_angle -= angle_step 
-    if keys_pressed[5]==1:
         current_angle += angle_step 
+    if keys_pressed[5]==1:
+        current_angle -= angle_step 
         
     current_angle = min(current_angle,180)
     current_angle = max(current_angle,0)
         
     if sum(keys_pressed[:4]) == 1:
         if keys_pressed[0] == 1:  # w
-            send_control_data(0, 200, 1, 200, 1, 0)
+            send_control_data(200, 1, 200, 1, 0)
         elif keys_pressed[1] == 1:  # a
-            send_control_data(0, 200, 0, 200, 1, 2)
+            send_control_data(200, 0, 200, 1, 2)
         elif keys_pressed[2] == 1:  # s
-            send_control_data(0, 200, 0, 200, 0, 1)
+            send_control_data(200, 0, 200, 0, 1)
         elif keys_pressed[3] == 1:  # d
-            send_control_data(0, 200, 1, 200, 0, 3)
+            send_control_data(200, 1, 200, 0, 3)
     elif sum(keys_pressed[:4]) == 2:
         if keys_pressed[0] == 1 and keys_pressed[1] == 1:  # w+a
-            send_control_data(0, 40, 1, 255, 1, 0)
+            send_control_data(40, 1, 255, 1, 0)
         elif keys_pressed[0] == 1 and keys_pressed[3] == 1:  # w+d
-            send_control_data(0, 255, 1, 40, 1, 0)
+            send_control_data(255, 1, 40, 1, 0)
         elif keys_pressed[2] == 1 and keys_pressed[1] == 1:  # s+a
-            send_control_data(0, 40, 0, 255, 0, 0)
+            send_control_data(40, 0, 255, 0, 0)
         elif keys_pressed[2] == 1 and keys_pressed[3] == 1:  # s+d
-            send_control_data(0, 255, 0, 40, 0, 0)
+            send_control_data(255, 0, 40, 0, 0)
         else:
-            send_control_data(0, 0, 0, 0, 0, 4)
+            send_control_data(0, 0, 0, 0, 4)
     else:
-        send_control_data(0, 0, 0, 0, 0, 4)
+        send_control_data(0, 0, 0, 0, 4)
 
 
 def on_press(key):
@@ -98,6 +91,11 @@ def on_release(key):
         keys_pressed[2] = 0
     if key == KeyCode.from_char("d"):
         keys_pressed[3] = 0
+    
+    if key == Key.left:
+        keys_pressed[4] = 0
+    if key == Key.right:
+        keys_pressed[5] = 0
 
     change_direction()
 
@@ -112,10 +110,10 @@ def start_listening():
 
 
 def some_other_task():
-    while True:
+    while True:      
         print(ser.readline())
+        time.sleep(0.1)
         # print("Running another task in parallel...")
-        time.sleep(1)
 
 
 if __name__ == "__main__":
