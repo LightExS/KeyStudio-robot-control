@@ -1,26 +1,21 @@
-import serial
 from pynput.keyboard import Listener, Controller, KeyCode, Key
 import threading
+import serial
 import time
 import os
 
 current_angle = 90
 angle_step = 15
-
-ser = serial.Serial("COM9")
-
-
-keyboard = Controller()
-prev_pressed = [0, 0, 0, 0, 0, 0]  # w, a, s, d, <-, ->
 keys_pressed = [0, 0, 0, 0, 0, 0]  # w, a, s, d, <-, ->
 
+ser = serial.Serial("COM9")
+keyboard = Controller()
 
 def send_control_data(left_pwn, left_direction, right_pwn, right_direction, display_direction):
     global current_angle
     control_sum = (left_pwn + left_direction + right_pwn + right_direction + display_direction + current_angle) % 256
     print(control_sum)
     ser.write(bytearray([255,left_pwn,left_direction,right_pwn,right_direction,display_direction,current_angle,control_sum]))
-
 
 
 def change_direction():
@@ -50,9 +45,9 @@ def change_direction():
         elif keys_pressed[0] == 1 and keys_pressed[3] == 1:  # w+d
             send_control_data(255, 1, 40, 1, 0)
         elif keys_pressed[2] == 1 and keys_pressed[1] == 1:  # s+a
-            send_control_data(40, 0, 255, 0, 0)
+            send_control_data(40, 0, 255, 0, 1)
         elif keys_pressed[2] == 1 and keys_pressed[3] == 1:  # s+d
-            send_control_data(255, 0, 40, 0, 0)
+            send_control_data(255, 0, 40, 0, 1)
         else:
             send_control_data(0, 0, 0, 0, 4)
     else:
@@ -60,10 +55,8 @@ def change_direction():
 
 
 def on_press(key):
-    global current_angle,prev_pressed
     prev_pressed = keys_pressed.copy()
-    
-    
+     
     if key == KeyCode.from_char("w"):
         keys_pressed[0] = 1
     if key == KeyCode.from_char("a"):
@@ -102,6 +95,7 @@ def on_release(key):
 
 def open_connection():
     os.system("ble-serial -d 48:70:1E:9F:66:F1")
+    
 
 
 def start_listening():
