@@ -1,4 +1,5 @@
 #include <Servo.h>
+#include <SoftwareSerial.h>
 
 unsigned char start01[] = {0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80,0x80,0x40,0x20,0x10,0x08,0x04,0x02,0x01};
 unsigned char front[] = {0x00,0x00,0x00,0x00,0x00,0x24,0x12,0x09,0x12,0x24,0x00,0x00,0x00,0x00,0x00,0x00};
@@ -16,10 +17,13 @@ Servo Servo1;
 #define ML_PWM 11   
 #define MR_Ctrl 12  
 #define MR_PWM 3   
-#define SERVO_Pin 9 
-#define echoPin 8 // Echo Pin
-#define trigPin 7 // Trigger Pin
+#define SERVO_Pin 6 
+#define echoPin 8 
+#define trigPin 7 
 
+#define GPS_TX 2
+
+SoftwareSerial gps(GPS_TX, -1);
 
 uint8_t transmit_destination=0;
 uint8_t left_pwn=0;
@@ -43,6 +47,7 @@ int debug_time = millis();
 void setup(){
   Serial.begin(9600);
   Servo1.attach(SERVO_Pin);
+  gps.begin(9600);
   
   pinMode(SCL_Pin,OUTPUT);
   pinMode(SDA_Pin,OUTPUT);
@@ -67,12 +72,9 @@ void setup(){
 }
 
 void loop(){
-
-
-
-
   int cur_time = millis();
   if (cur_time - debug_time > 1000){
+    
     debug_time = cur_time;
     digitalWrite(trigPin, LOW); 
     delayMicroseconds(2);  //період тиші
@@ -82,13 +84,19 @@ void loop(){
     
     digitalWrite(trigPin, LOW);
     duration = pulseIn(echoPin, HIGH); //вимірюємо час до отримання відбитої хвилі
-    
     distance = duration/58.2; //розраховуємо відстань
     
-    if (distance <= maximumRange && distance >= minimumRange){
-      Serial.println("Distance: " + String(distance));
+    String gps_str = "";
+
+    while (gps.available() > 0){
+      char rec_byte = gps.read();
+      gps_str += rec_byte;
     }
-    //Serial.println(String(left_pwn) + " "+ String(left_direction) + " "+ String(right_pwn) + " "+ String(right_direction) + " "+ String(display_direction) + " "+ String(servo_angle) + " "+ String(control_sum));
+    
+    if (distance >= maximumRange || distance <= minimumRange){
+      distance = -1;
+    }
+    Serial.println(String(distance));
   }
   if (Serial.available())
   {
@@ -133,7 +141,7 @@ void loop(){
     return;
   }
 
-  switch (display_direction) 
+  switch (display_direction)
   {
      case 0:  
         matrix_display(front);  
