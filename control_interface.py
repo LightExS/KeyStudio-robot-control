@@ -1,35 +1,37 @@
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QKeyEvent
+from serial_communication import change_direction_from_keyboard, send_control_data, serial_port
 from dualsense_control import Dualsense
 from subprocess import Popen, PIPE
-from PyQt5.QtCore import Qt
 import threading
-import serial
 import signal
 import time
 import sys
 import os
 
 
-mac = ""
-should_connect_to_ble_device = False
-should_terminate_connection_to_ble_device = False
-is_app_running = True
-current_angle = 90
-angle_step = 15
+should_connect_to_ble_device = threading.Event()
+should_terminate_connection_to_ble_device = threading.Event()
+is_app_running = threading.Event()
+
 keys_available = [Qt.Key_W, Qt.Key_A, Qt.Key_S, Qt.Key_D, Qt.Key_J, Qt.Key_L]
 keys_pressed = [0, 0, 0, 0, 0, 0]  # w, a, s, d, <-, ->
 input_mode = 0 # 0 - keyboard, 1 - gamepad joystick, 2 - gamepad accelerometer
-
+mac = ""
 
 
 class MyApp(QWidget):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
         # Set up the main layout
         self.initUI()
 
-    def initUI(self):
+    def initUI(self) -> None:
+        """
+        Initializes interface
+        """
         main_layout = QVBoxLayout()
 
         # First row
@@ -84,28 +86,42 @@ class MyApp(QWidget):
         self.setGeometry(300, 300, 400, 300)
         self.show()
     
-    def change_group_clickable(self, state):
+    def change_group_clickable(self, state: bool) -> None:
+        """
+        changes enabled or disabled state for group of elements
+
+        Args:
+            state (bool): state to set elements to
+        """
         self.disconnect_btn.setEnabled(state)
         self.apply_set_btn.setEnabled(state)
         self.keyboard_rbtn.setEnabled(state)
         self.keyboard_rbtn.setEnabled(state)
         self.gamepad_joy_rbtn.setEnabled(state)
-        self.gamepad_accel_rbtnn.setEnabled(state)
+        self.gamepad_accel_rbtn.setEnabled(state)
 
-    def on_connect_btn_click(self):
-        global mac, should_connect_to_ble_device
+    def on_connect_btn_click(self) -> None:
+        """
+        Function called on 'Connect' button pess
+        """
+        global mac
         
         mac = self.MAC_entry.text()
-        should_connect_to_ble_device = True
+        should_connect_to_ble_device.set()
         
         self.change_group_clickable(True)
 
-    def on_disconnect_btn_click(self):
-        global should_terminate_connection_to_ble_device
-        should_terminate_connection_to_ble_device = True
+    def on_disconnect_btn_click(self) -> None:
+        """
+        Function called on 'Disconnect' button pess
+        """
+        should_terminate_connection_to_ble_device.set()
         self.change_group_clickable(False)
 
-    def on_apply_set_btn_click(self):
+    def on_apply_set_btn_click(self) -> None:
+        """
+        Function called on 'Apply' button pess
+        """
         global input_mode
         if self.keyboard_btn.isChecked():
             input_mode = 0
@@ -114,87 +130,76 @@ class MyApp(QWidget):
         elif self.gamepad_accel_btn.isChecked():
             input_mode = 2
         
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """
+        Key pressess handler
+
+        Args:
+            event (QKeyEvent): event of key state change
+        """
         if event.isAutoRepeat():
             return
         
         self.change_state_to(event.key(), 1)
         
-        change_direction()
+        change_direction_from_keyboard(keys_pressed)
 
-    def keyReleaseEvent(self, event):
+    def keyReleaseEvent(self, event: QKeyEvent) -> None:
+        """
+        Key releases handler
+
+        Args:
+            event (QKeyEvent): event of key state change
+        """
         if event.isAutoRepeat():
             return
         
         self.change_state_to(event.key(), 0)
         
-        change_direction()
+        change_direction_from_keyboard(keys_pressed)
         
     
-    def change_state_to(self, key, state):
+    def change_state_to(self, key:Qt.Key, state: int) -> None:
+        """
+        Function to change states of button in keys_available event
+
+        Args:
+            key (Qt.Key): key which state was changed
+            state (int): was key pressed (1) or unpressed (0)
+        """
         for i, k in enumerate(keys_available):
             if key == k:
                 keys_pressed[i] = state
                 break
     
-    def update_distance(self,distance: int):
+    def update_distance(self, distance: float) -> None:
+        """
+        Function to make changes to interface on change of distance
+
+        Args:
+            distance (float): distance measured by ultrasonic sensor
+        """
         self.distance_label.setText(f"Distance: {distance}")
     
-    def on_exit(self):
-        global is_app_running, should_terminate_connection_to_ble_device
-        is_app_running = False
-        should_terminate_connection_to_ble_device = True
-
-def send_control_data(left_pwn, left_direction, right_pwn, right_direction, display_direction, servo_angle):
-    control_sum = (left_pwn + left_direction + right_pwn + right_direction + display_direction + servo_angle) % 256
-    print([255,left_pwn,left_direction,right_pwn,right_direction,display_direction,servo_angle,control_sum])
-    #ser.write(bytearray([255,left_pwn,left_direction,right_pwn,right_direction,display_direction,servo_angle,control_sum]))
-
-
-def change_direction():
-    global current_angle, input_mode
-    
-    if input_mode != 0:
-        return
-    
-    if keys_pressed[4]==1:
-        current_angle += angle_step 
-    if keys_pressed[5]==1:
-        current_angle -= angle_step 
-        
-    current_angle = min(current_angle,180)
-    current_angle = max(current_angle,0)
-        
-    if sum(keys_pressed[:4]) == 1:
-        if keys_pressed[0] == 1:  # w
-            send_control_data(200, 1, 200, 1, 0, current_angle)
-        elif keys_pressed[1] == 1:  # a
-            send_control_data(200, 0, 200, 1, 2, current_angle)
-        elif keys_pressed[2] == 1:  # s
-            send_control_data(200, 0, 200, 0, 1, current_angle)
-        elif keys_pressed[3] == 1:  # d
-            send_control_data(200, 1, 200, 0, 3, current_angle)
-    elif sum(keys_pressed[:4]) == 2:
-        if keys_pressed[0] == 1 and keys_pressed[1] == 1:  # w+a
-            send_control_data(40, 1, 255, 1, 0, current_angle)
-        elif keys_pressed[0] == 1 and keys_pressed[3] == 1:  # w+d
-            send_control_data(255, 1, 40, 1, 0, current_angle)
-        elif keys_pressed[2] == 1 and keys_pressed[1] == 1:  # s+a
-            send_control_data(40, 0, 255, 0, 1, current_angle)
-        elif keys_pressed[2] == 1 and keys_pressed[3] == 1:  # s+d
-            send_control_data(255, 0, 40, 0, 1, current_angle)
-        else:
-            send_control_data(0, 0, 0, 0, 4, current_angle)
-    else:
-        send_control_data(0, 0, 0, 0, 4, current_angle)
+    def on_exit(self) -> None:
+        """
+        Function called on application exit
+        """
+        is_app_running.set()
+        # listener_thread.join()
+        # gamepad_thread.join()
+        # serial_thread.join()
+        should_terminate_connection_to_ble_device.set()
 
 
-def listener():
-    global mac, should_connect_to_ble_device, should_terminate_connection_to_ble_device, is_app_running
-    while is_app_running:
-        if not should_connect_to_ble_device:
+
+
+def ble_listener():
+    global mac
+    while not is_app_running.is_set():
+        if not should_connect_to_ble_device.is_set():
             continue
-        should_connect_to_ble_device = False
+        should_connect_to_ble_device.clear()
 
         if mac == "":
             continue
@@ -202,18 +207,19 @@ def listener():
         command = ["ble-serial","-d",mac]
         process = Popen(command, stdout=PIPE, stderr=PIPE)
 
-        while should_terminate_connection_to_ble_device == False:
+        while not should_terminate_connection_to_ble_device.is_set():
             pass
         
-        should_terminate_connection_to_ble_device = False
+        should_terminate_connection_to_ble_device.clear()
         os.kill(process.pid, signal.SIGINT)
 
 
 
 def gamepad_listening():
-    global input_mode, is_app_running
+    global input_mode
     ds = Dualsense()  # open controller
-    while is_app_running:
+    while not is_app_running.is_set():
+        
         if input_mode == 0:
             continue
 
@@ -234,17 +240,17 @@ def gamepad_listening():
     ds.stop()
 
 def serial_reader():
-    global is_app_running
-    while is_app_running:      
-        serial_read = ser.readline()
-        ex.update_distance(int(serial_read))
+    while not is_app_running.is_set():
+        if serial_port.in_waiting:    
+            serial_read = serial_port.readline()
+            ex.update_distance(float(serial_read))
 
 if __name__ == '__main__':
-    ser = serial.Serial("COM9")
     app = QApplication(sys.argv)
     ex = MyApp()   
+    app.aboutToQuit.connect(ex.on_exit)
     
-    listener_thread = threading.Thread(target=listener)
+    listener_thread = threading.Thread(target=ble_listener)
     gamepad_thread = threading.Thread(target=gamepad_listening)
     serial_thread = threading.Thread(target=serial_reader)
     
