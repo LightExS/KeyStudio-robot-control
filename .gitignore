@@ -1,3 +1,5 @@
 .vscode
 .venv
+__pycache__
 test.ipynb
+dualsense_tests.py
